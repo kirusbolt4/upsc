@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,28 +10,60 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn, user, profile } = useAuth();
+  const navigate = useNavigate();
 
-  // Redirect if already logged in
+  // Handle redirect after successful login
+  useEffect(() => {
+    if (user && profile) {
+      const redirectPath = profile.role === 'admin' ? '/admin' : '/dashboard';
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, profile, navigate]);
+
+  // Don't render login form if already authenticated
   if (user && profile) {
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/dashboard'} replace />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    
+    if (!email.trim() || !password) {
       toast.error('Please fill in all fields');
       return;
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
     
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success('Logged in successfully!');
+    try {
+      const { error } = await signIn(email.trim(), password);
+      
+      if (error) {
+        console.error('Login error:', error);
+        if (error.message?.includes('Invalid login credentials')) {
+          toast.error('Invalid email or password');
+        } else if (error.message?.includes('Email not confirmed')) {
+          toast.error('Please check your email and confirm your account');
+        } else {
+          toast.error(error.message || 'Failed to sign in');
+        }
+      } else {
+        toast.success('Logged in successfully!');
+        // Navigation will be handled by useEffect
+      }
+    } catch (error) {
+      console.error('Login catch error:', error);
+      toast.error('An unexpected error occurred');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -65,7 +97,8 @@ export function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                disabled={loading}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Enter your email"
               />
             </div>
@@ -83,13 +116,15 @@ export function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10"
+                  disabled={loading}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-gray-400" />
