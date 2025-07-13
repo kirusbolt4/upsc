@@ -14,15 +14,15 @@ export function Login() {
 
   // Handle redirect after successful login
   useEffect(() => {
-    if (user && profile && !authLoading) {
+    if (user && !authLoading) {
       console.log('User logged in, redirecting...', profile.role);
-      const redirectPath = profile.role === 'admin' ? '/admin' : '/dashboard';
+      const redirectPath = profile?.role === 'admin' ? '/admin' : '/dashboard';
       navigate(redirectPath, { replace: true });
     }
   }, [user, profile, authLoading, navigate]);
 
   // Don't render login form if already authenticated
-  if (user && profile) {
+  if (user && !authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

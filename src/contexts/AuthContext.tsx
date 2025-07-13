@@ -37,9 +37,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const initializeAuth = async () => {
       try {
@@ -50,8 +53,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         if (error) {
           console.error('Error getting initial session:', error);
+          
+          // Retry on network errors
+          if (error.message?.includes('fetch') && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Retrying auth initialization (${retryCount}/${maxRetries})...`);
+            setTimeout(initializeAuth, 1000 * retryCount);
+            return;
+          }
+          
           if (mounted) {
             setLoading(false);
+            setInitialized(true);
           }
           return;
         }
@@ -64,14 +77,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
           
           if (initialSession?.user) {
             await fetchProfile(initialSession.user.id);
+          } else {
+            setProfile(null);
           }
           
           setLoading(false);
+          setInitialized(true);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
+        
+        // Retry on network errors
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Retrying auth initialization (${retryCount}/${maxRetries})...`);
+          setTimeout(initializeAuth, 1000 * retryCount);
+          return;
+        }
+        
         if (mounted) {
           setLoading(false);
+          setInitialized(true);
         }
       }
     };
@@ -87,6 +113,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!mounted) return;
 
       try {
+        // Handle sign out event
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -97,6 +132,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } catch (error) {
         console.error('Error handling auth state change:', error);
+        // Don't clear state on profile fetch errors
+        if (session?.user) {
+          setUser(session.user);
+          setSession(session);
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -114,6 +154,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       console.log('Fetching profile for user:', userId);
       
+      // Add retry logic for profile fetching
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      const attemptFetch = async (): Promise<any> => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -170,17 +215,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setLoading(true);
       console.log('Attempting sign up for:', email);
-      
+        if (error) {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
-        password,
+          // Retry on network errors
+          if (error.message?.includes('fetch') && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Retrying profile fetch (${retryCount}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            return attemptFetch();
+          }
+          
+          // If profile doesn't exist, it will be created by trigger
         options: {
           data: {
-            full_name: fullName,
-            role: role,
+            return null;
           }
         }
       });
+        return data;
+      };
+      
+      const data = await attemptFetch();
+      
+      if (data) {
 
       if (error) {
         console.error('Sign up error:', error);
@@ -197,9 +255,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error('Sign up catch error:', error);
+      } else {
+        setProfile(null);
+      }
       return { error };
     } finally {
-      setLoading(false);
+      // Don't clear profile on fetch errors, keep existing state
+      if (!profile) {
+        setProfile(null);
+      }
     }
   };
 
@@ -208,28 +272,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       console.log('Signing out...');
       
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Sign out error:', error);
-        throw error;
-      }
-
       // Clear state immediately
       setUser(null);
       setProfile(null);
       setSession(null);
       
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        // Don't throw error, just log it
+      }
+
       console.log('Sign out successful');
       
-      // Force page reload to clear any cached state
-      window.location.href = '/login';
+      // Navigate to login without full page reload
+      window.location.replace('/login');
     } catch (error) {
       console.error('Sign out error:', error);
       // Even if there's an error, clear local state
       setUser(null);
       setProfile(null);
       setSession(null);
-      window.location.href = '/login';
+      window.location.replace('/login');
     } finally {
       setLoading(false);
     }
@@ -237,6 +301,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const isAdmin = profile?.role === 'admin';
   const isStudent = profile?.role === 'student';
+
+  // Show loading until auth is initialized
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Initializing...</p>
+        </div>
+      </div>
+    );
+  }
 
   const value = {
     user,

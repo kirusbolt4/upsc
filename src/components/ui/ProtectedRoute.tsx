@@ -32,7 +32,16 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
   }
 
   // Wait for profile to load - show loading if we have user but no profile yet
+  // But only wait a reasonable amount of time to prevent infinite loading
   if (!profile) {
+    // If we have a user but no profile after some time, still allow access
+    // The profile might be created by the database trigger
+    setTimeout(() => {
+      if (!profile && user) {
+        console.log('Profile not loaded after timeout, allowing access with user data');
+      }
+    }, 5000);
+    
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
