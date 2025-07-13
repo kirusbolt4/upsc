@@ -37,114 +37,120 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout;
 
-    const initializeAuth = async () => {
+    const initAuth = async () => {
       try {
+        // Clear any existing state
+        setUser(null);
+        setProfile(null);
+        setSession(null);
+        setLoading(true);
+
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (mounted) {
+            console.log('Auth initialization timeout - proceeding without auth');
+            setLoading(false);
+            setInitialized(true);
+          }
+        }, 5000);
+
         // Get current session
-        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
         
-        if (sessionError) {
-          console.error('Session error:', sessionError);
-          throw sessionError;
+        if (error) {
+          console.error('Session error:', error);
+          throw error;
         }
 
-        if (!isMounted) return;
+        if (!mounted) return;
 
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
-        
+        // Clear timeout since we got a response
+        clearTimeout(timeoutId);
+
         if (currentSession?.user) {
-          await loadProfile(currentSession.user.id);
-        } else {
-          setProfile(null);
+          setSession(currentSession);
+          setUser(currentSession.user);
+          
+          // Try to load profile
+          try {
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', currentSession.user.id)
+              .single();
+
+            if (profileError && profileError.code !== 'PGRST116') {
+              console.error('Profile error:', profileError);
+            } else if (profileData) {
+              setProfile(profileData);
+            }
+          } catch (profileErr) {
+            console.error('Profile fetch error:', profileErr);
+          }
         }
-        
+
       } catch (error) {
         console.error('Auth initialization error:', error);
-        if (isMounted) {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-        }
       } finally {
-        if (isMounted) {
+        if (mounted) {
           setLoading(false);
-          setAuthInitialized(true);
+          setInitialized(true);
         }
       }
     };
 
-    initializeAuth();
+    initAuth();
 
-    // Set up auth state listener
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!isMounted) return;
+    // Auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted) return;
 
-      console.log('Auth state change:', event);
+      console.log('Auth event:', event);
 
-      try {
-        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !newSession) {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
-          
-          if (newSession?.user) {
-            await loadProfile(newSession.user.id);
-          } else {
-            setProfile(null);
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setProfile(null);
+        setSession(null);
+      } else if (event === 'SIGNED_IN' && newSession?.user) {
+        setSession(newSession);
+        setUser(newSession.user);
+        
+        // Load profile for new session
+        try {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', newSession.user.id)
+            .single();
+
+          if (profileError && profileError.code !== 'PGRST116') {
+            console.error('Profile error:', profileError);
+          } else if (profileData) {
+            setProfile(profileData);
           }
-        } else if (event === 'USER_UPDATED') {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
+        } catch (profileErr) {
+          console.error('Profile fetch error:', profileErr);
         }
-      } catch (error) {
-        console.error('Auth state change error:', error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+      } else if (event === 'TOKEN_REFRESHED' && newSession) {
+        setSession(newSession);
+        setUser(newSession.user);
       }
+
+      setLoading(false);
     });
 
     return () => {
-      isMounted = false;
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
-
-  const loadProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // Profile doesn't exist yet, will be created by trigger
-          console.log('Profile not found, will be created automatically');
-          setProfile(null);
-          return;
-        }
-        throw error;
-      }
-
-      setProfile(data);
-    } catch (error) {
-      console.error('Error loading profile:', error);
-      setProfile(null);
-    }
-  };
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -156,14 +162,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
       
       if (error) {
+        setLoading(false);
         return { error };
       }
 
+      // Don't set loading to false here - let the auth state change handle it
       return { error: null };
     } catch (error) {
-      return { error };
-    } finally {
       setLoading(false);
+      return { error };
     }
   };
 
@@ -183,6 +190,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       if (error) {
+        setLoading(false);
         return { error };
       }
 
@@ -190,33 +198,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
         toast.success('Account created! Please check your email to verify your account.');
       }
 
+      setLoading(false);
       return { error: null };
     } catch (error) {
-      return { error };
-    } finally {
       setLoading(false);
+      return { error };
     }
   };
 
   const signOut = async () => {
     try {
+      setLoading(true);
+      
       // Clear state immediately
       setUser(null);
       setProfile(null);
       setSession(null);
       
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Sign out error:', error);
+      // Clear localStorage
+      try {
+        localStorage.removeItem('upsc-tracker-auth-token');
+        localStorage.clear();
+      } catch (e) {
+        // Ignore localStorage errors
       }
-
-      // Force navigation to login
+      
+      await supabase.auth.signOut();
+      
+      // Force reload to clear any cached state
       window.location.href = '/login';
     } catch (error) {
       console.error('Sign out error:', error);
-      setUser(null);
-      setProfile(null);
-      setSession(null);
+      // Force navigation even if signOut fails
       window.location.href = '/login';
     }
   };
@@ -224,8 +237,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const isAdmin = profile?.role === 'admin';
   const isStudent = profile?.role === 'student';
 
-  // Show loading screen until auth is properly initialized
-  if (!authInitialized) {
+  // Show loading only if not initialized
+  if (!initialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

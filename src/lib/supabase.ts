@@ -1,14 +1,42 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Get environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Get environment variables with fallbacks
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
-  throw new Error('Supabase configuration is missing. Please check your environment variables.');
 }
+
+// Custom storage implementation with better error handling
+const customStorage = {
+  getItem: (key: string) => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return window.localStorage.getItem(key);
+    } catch (error) {
+      console.warn('localStorage getItem failed:', error);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn('localStorage setItem failed:', error);
+    }
+  },
+  removeItem: (key: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {
+      console.warn('localStorage removeItem failed:', error);
+    }
+  }
+};
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -17,47 +45,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
     flowType: 'pkce',
     debug: false,
-    storage: {
-      getItem: (key: string) => {
-        if (typeof window === 'undefined') return null;
-        try {
-          return window.localStorage.getItem(key);
-        } catch {
-          return null;
-        }
-      },
-      setItem: (key: string, value: string) => {
-        if (typeof window === 'undefined') return;
-        try {
-          window.localStorage.setItem(key, value);
-        } catch {
-          // Ignore storage errors
-        }
-      },
-      removeItem: (key: string) => {
-        if (typeof window === 'undefined') return;
-        try {
-          window.localStorage.removeItem(key);
-        } catch {
-          // Ignore storage errors
-        }
-      }
-    },
+    storage: customStorage,
     storageKey: 'upsc-tracker-auth-token'
   },
   global: {
     headers: {
-      'X-Client-Info': 'upsc-tracker',
-      'apikey': supabaseAnonKey
+      'X-Client-Info': 'upsc-tracker'
     }
   },
   db: {
     schema: 'public'
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    }
   }
 });
 

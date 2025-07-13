@@ -8,22 +8,20 @@ export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const { signIn, user, profile, loading: authLoading } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const { signIn, user, profile, loading } = useAuth();
   const navigate = useNavigate();
 
   // Handle redirect after successful login
   useEffect(() => {
-    if (user && !authLoading) {
-      if (profile) {
-        const redirectPath = profile.role === 'admin' ? '/admin' : '/dashboard';
-        navigate(redirectPath, { replace: true });
-      }
+    if (user && !loading && !submitting) {
+      const redirectPath = profile?.role === 'admin' ? '/admin' : '/dashboard';
+      navigate(redirectPath, { replace: true });
     }
-  }, [user, profile, authLoading, navigate]);
+  }, [user, profile, loading, submitting, navigate]);
 
   // Don't render login form if already authenticated
-  if (user && !authLoading) {
+  if (user && !loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -42,7 +40,7 @@ export function Login() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     
     try {
       const { error } = await signIn(email.trim(), password);
@@ -58,14 +56,14 @@ export function Login() {
         } else {
           toast.error(error.message || 'Failed to sign in. Please try again.');
         }
+        setSubmitting(false);
       } else {
         toast.success('Logged in successfully!');
-        // Navigation will be handled by useEffect
+        // Don't set submitting to false here - let the redirect handle it
       }
     } catch (error) {
       toast.error('An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -100,7 +98,7 @@ export function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={loading || authLoading}
+                disabled={submitting || loading}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Enter your email"
               />
@@ -119,7 +117,7 @@ export function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading || authLoading}
+                  disabled={submitting || loading}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Enter your password"
                 />
@@ -127,7 +125,7 @@ export function Login() {
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading || authLoading}
+                  disabled={submitting || loading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-gray-400" />
@@ -142,10 +140,10 @@ export function Login() {
           <div>
             <button
               type="submit"
-              disabled={loading || authLoading}
+              disabled={submitting || loading}
               className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
-              {loading || authLoading ? (
+              {submitting || loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 'Sign in'
