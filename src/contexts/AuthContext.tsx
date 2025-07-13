@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/supabase';
+import toast from 'react-hot-toast';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -36,13 +37,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
     const initializeAuth = async () => {
       try {
+        console.log('Initializing auth...');
+        
         // Get initial session
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
@@ -50,10 +52,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.error('Error getting initial session:', error);
           if (mounted) {
             setLoading(false);
-            setInitialized(true);
           }
           return;
         }
+
+        console.log('Initial session:', initialSession?.user?.id);
 
         if (mounted) {
           setSession(initialSession);
@@ -64,13 +67,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
           
           setLoading(false);
-          setInitialized(true);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
         if (mounted) {
           setLoading(false);
-          setInitialized(true);
         }
       }
     };
@@ -97,7 +98,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (error) {
         console.error('Error handling auth state change:', error);
       } finally {
-        if (mounted && initialized) {
+        if (mounted) {
           setLoading(false);
         }
       }
@@ -111,6 +112,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchProfile = async (userId: string) => {
     try {
+      console.log('Fetching profile for user:', userId);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -118,20 +121,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .single();
 
       if (error) {
+        console.error('Error fetching profile:', error);
+        
+        // If profile doesn't exist, try to create it
         if (error.code === 'PGRST116') {
-          console.log('Profile not found for user:', userId);
-        } else {
-          console.error('Error fetching profile:', error);
+          console.log('Profile not found, will be created by trigger');
+          setProfile(null);
+          return;
         }
-        setProfile(null);
-        return;
+        
+        throw error;
       }
 
-      if (data) {
-        setProfile(data);
-      } else {
-        setProfile(null);
-      }
+      console.log('Profile fetched:', data);
+      setProfile(data);
     } catch (error) {
       console.error('Error in fetchProfile:', error);
       setProfile(null);
@@ -141,6 +144,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
+      console.log('Attempting sign in for:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -152,7 +156,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return { error };
       }
 
-      // Don't manually set state here - let the auth state change listener handle it
+      console.log('Sign in successful:', data.user?.id);
       return { error: null };
     } catch (error) {
       console.error('Sign in catch error:', error);
@@ -165,6 +169,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signUp = async (email: string, password: string, fullName: string, role: 'admin' | 'student') => {
     try {
       setLoading(true);
+      console.log('Attempting sign up for:', email);
       
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -182,28 +187,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return { error };
       }
 
-      if (data.user) {
-        // Create profile with proper error handling
-        try {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: data.user.id,
-              email: email.trim(),
-              full_name: fullName,
-              role,
-            });
-
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
-            // If profile creation fails, we should still allow the user to continue
-            // as the profile might be created by a database trigger
-            console.warn('Profile creation failed, but user account was created');
-          }
-        } catch (profileError) {
-          console.error('Profile creation error:', profileError);
-          // Continue anyway as profile might be created by trigger
-        }
+      console.log('Sign up successful:', data.user?.id);
+      
+      // Profile will be created automatically by the database trigger
+      if (data.user && !data.user.email_confirmed_at) {
+        toast.success('Account created! Please check your email to verify your account.');
       }
 
       return { error: null };
@@ -218,6 +206,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signOut = async () => {
     try {
       setLoading(true);
+      console.log('Signing out...');
       
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -229,6 +218,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
       setProfile(null);
       setSession(null);
+      
+      console.log('Sign out successful');
       
       // Force page reload to clear any cached state
       window.location.href = '/login';

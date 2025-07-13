@@ -11,6 +11,8 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requireAdmin = false, requireStudent = false }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
 
+  console.log('ProtectedRoute - User:', user?.id, 'Profile:', profile?.role, 'Loading:', loading);
+
   // Show loading spinner while checking authentication
   if (loading) {
     return (
@@ -25,10 +27,11 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
 
   // Redirect to login if not authenticated
   if (!user) {
+    console.log('No user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
-  // Wait for profile to load
+  // Wait for profile to load - show loading if we have user but no profile yet
   if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -42,12 +45,15 @@ export function ProtectedRoute({ children, requireAdmin = false, requireStudent 
 
   // Check role-based access
   if (requireAdmin && profile.role !== 'admin') {
+    console.log('Admin required but user is:', profile.role);
     return <Navigate to="/dashboard" replace />;
   }
 
   if (requireStudent && profile.role !== 'student') {
+    console.log('Student required but user is:', profile.role);
     return <Navigate to="/admin" replace />;
   }
 
+  console.log('Access granted for role:', profile.role);
   return <>{children}</>;
 }

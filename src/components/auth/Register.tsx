@@ -20,7 +20,8 @@ export function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || !fullName) {
+    
+    if (!email.trim() || !password || !fullName.trim()) {
       toast.error('Please fill in all fields');
       return;
     }
@@ -31,14 +32,33 @@ export function Register() {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, fullName, role);
     
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success('Account created successfully! Please check your email for verification.');
+    try {
+      console.log('Submitting registration form...');
+      const { error } = await signUp(email.trim(), password, fullName.trim(), role);
+      
+      if (error) {
+        console.error('Registration error:', error);
+        
+        if (error.message?.includes('User already registered')) {
+          toast.error('An account with this email already exists. Please sign in instead.');
+        } else if (error.message?.includes('Password should be at least')) {
+          toast.error('Password must be at least 6 characters long.');
+        } else if (error.message?.includes('Invalid email')) {
+          toast.error('Please enter a valid email address.');
+        } else {
+          toast.error(error.message || 'Failed to create account. Please try again.');
+        }
+      } else {
+        console.log('Registration successful');
+        // Success message is handled in the signUp function
+      }
+    } catch (error) {
+      console.error('Registration catch error:', error);
+      toast.error('An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -71,7 +91,8 @@ export function Register() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                disabled={loading}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Enter your full name"
               />
             </div>
@@ -88,7 +109,8 @@ export function Register() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                disabled={loading}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Enter your email"
               />
             </div>
@@ -106,13 +128,15 @@ export function Register() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10"
-                  placeholder="Enter your password"
+                  disabled={loading}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="Enter your password (min 6 characters)"
                 />
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-gray-400" />
@@ -131,8 +155,9 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRole('student')}
+                  disabled={loading}
                   className={`
-                    flex items-center justify-center px-4 py-3 border rounded-md text-sm font-medium transition-all
+                    flex items-center justify-center px-4 py-3 border rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed
                     ${role === 'student'
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -145,8 +170,9 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRole('admin')}
+                  disabled={loading}
                   className={`
-                    flex items-center justify-center px-4 py-3 border rounded-md text-sm font-medium transition-all
+                    flex items-center justify-center px-4 py-3 border rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed
                     ${role === 'admin'
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
