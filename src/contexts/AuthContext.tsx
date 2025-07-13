@@ -37,128 +37,92 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
+    let isMounted = true;
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...');
+        // Get current session
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
         
-        // Get initial session
-        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting initial session:', error);
-          
-          // Retry on network errors
-          if (error.message?.includes('fetch') && retryCount < maxRetries) {
-            retryCount++;
-            console.log(`Retrying auth initialization (${retryCount}/${maxRetries})...`);
-            setTimeout(initializeAuth, 1000 * retryCount);
-            return;
-          }
-          
-          if (mounted) {
-            setLoading(false);
-            setInitialized(true);
-          }
-          return;
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          throw sessionError;
         }
 
-        console.log('Initial session:', initialSession?.user?.id);
+        if (!isMounted) return;
 
-        if (mounted) {
-          setSession(initialSession);
-          setUser(initialSession?.user ?? null);
-          
-          if (initialSession?.user) {
-            await fetchProfile(initialSession.user.id);
-          } else {
-            setProfile(null);
-          }
-          
-          setLoading(false);
-          setInitialized(true);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        
+        if (currentSession?.user) {
+          await loadProfile(currentSession.user.id);
+        } else {
+          setProfile(null);
         }
+        
       } catch (error) {
-        console.error('Error initializing auth:', error);
-        
-        // Retry on network errors
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`Retrying auth initialization (${retryCount}/${maxRetries})...`);
-          setTimeout(initializeAuth, 1000 * retryCount);
-          return;
+        console.error('Auth initialization error:', error);
+        if (isMounted) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
         }
-        
-        if (mounted) {
+      } finally {
+        if (isMounted) {
           setLoading(false);
-          setInitialized(true);
+          setAuthInitialized(true);
         }
       }
     };
 
     initializeAuth();
 
-    // Listen for auth state changes
+    // Set up auth state listener
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
-      
-      if (!mounted) return;
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!isMounted) return;
+
+      console.log('Auth state change:', event);
 
       try {
-        // Handle sign out event
-        if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !newSession) {
           setSession(null);
           setUser(null);
           setProfile(null);
-          setLoading(false);
-          return;
-        }
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          
+          if (newSession?.user) {
+            await loadProfile(newSession.user.id);
+          } else {
+            setProfile(null);
+          }
+        } else if (event === 'USER_UPDATED') {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
         }
       } catch (error) {
-        console.error('Error handling auth state change:', error);
-        // Don't clear state on profile fetch errors
-        if (session?.user) {
-          setUser(session.user);
-          setSession(session);
-        }
+        console.error('Auth state change error:', error);
       } finally {
-        if (mounted) {
+        if (isMounted) {
           setLoading(false);
         }
       }
     });
 
     return () => {
-      mounted = false;
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const loadProfile = async (userId: string) => {
     try {
-      console.log('Fetching profile for user:', userId);
-      
-      // Add retry logic for profile fetching
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      const attemptFetch = async (): Promise<any> => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -166,22 +130,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .single();
 
       if (error) {
-        console.error('Error fetching profile:', error);
-        
-        // If profile doesn't exist, try to create it
         if (error.code === 'PGRST116') {
-          console.log('Profile not found, will be created by trigger');
+          // Profile doesn't exist yet, will be created by trigger
+          console.log('Profile not found, will be created automatically');
           setProfile(null);
           return;
         }
-        
         throw error;
       }
 
-      console.log('Profile fetched:', data);
       setProfile(data);
     } catch (error) {
-      console.error('Error in fetchProfile:', error);
+      console.error('Error loading profile:', error);
       setProfile(null);
     }
   };
@@ -189,22 +149,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      console.log('Attempting sign in for:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
       });
       
       if (error) {
-        console.error('Sign in error:', error);
         return { error };
       }
 
-      console.log('Sign in successful:', data.user?.id);
       return { error: null };
     } catch (error) {
-      console.error('Sign in catch error:', error);
       return { error };
     } finally {
       setLoading(false);
@@ -214,64 +170,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signUp = async (email: string, password: string, fullName: string, role: 'admin' | 'student') => {
     try {
       setLoading(true);
-      console.log('Attempting sign up for:', email);
-        if (error) {
+      
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-          // Retry on network errors
-          if (error.message?.includes('fetch') && retryCount < maxRetries) {
-            retryCount++;
-            console.log(`Retrying profile fetch (${retryCount}/${maxRetries})...`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            return attemptFetch();
-          }
-          
-          // If profile doesn't exist, it will be created by trigger
+        email: email.trim().toLowerCase(),
+        password,
         options: {
           data: {
-            return null;
+            full_name: fullName,
+            role: role
           }
         }
       });
-        return data;
-      };
-      
-      const data = await attemptFetch();
-      
-      if (data) {
 
       if (error) {
-        console.error('Sign up error:', error);
         return { error };
       }
 
-      console.log('Sign up successful:', data.user?.id);
-      
-      // Profile will be created automatically by the database trigger
       if (data.user && !data.user.email_confirmed_at) {
         toast.success('Account created! Please check your email to verify your account.');
       }
 
       return { error: null };
     } catch (error) {
-      console.error('Sign up catch error:', error);
-      } else {
-        setProfile(null);
-      }
       return { error };
     } finally {
-      // Don't clear profile on fetch errors, keep existing state
-      if (!profile) {
-        setProfile(null);
-      }
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
-      setLoading(true);
-      console.log('Signing out...');
-      
       // Clear state immediately
       setUser(null);
       setProfile(null);
@@ -280,35 +208,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Sign out error:', error);
-        // Don't throw error, just log it
       }
 
-      console.log('Sign out successful');
-      
-      // Navigate to login without full page reload
-      window.location.replace('/login');
+      // Force navigation to login
+      window.location.href = '/login';
     } catch (error) {
       console.error('Sign out error:', error);
-      // Even if there's an error, clear local state
       setUser(null);
       setProfile(null);
       setSession(null);
-      window.location.replace('/login');
-    } finally {
-      setLoading(false);
+      window.location.href = '/login';
     }
   };
 
   const isAdmin = profile?.role === 'admin';
   const isStudent = profile?.role === 'student';
 
-  // Show loading until auth is initialized
-  if (!initialized) {
+  // Show loading screen until auth is properly initialized
+  if (!authInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Initializing...</p>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
     );

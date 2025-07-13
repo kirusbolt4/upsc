@@ -34,12 +34,9 @@ export function Register() {
     setLoading(true);
     
     try {
-      console.log('Submitting registration form...');
       const { error } = await signUp(email.trim(), password, fullName.trim(), role);
       
       if (error) {
-        console.error('Registration error:', error);
-        
         if (error.message?.includes('User already registered')) {
           toast.error('An account with this email already exists. Please sign in instead.');
         } else if (error.message?.includes('Password should be at least')) {
@@ -49,12 +46,8 @@ export function Register() {
         } else {
           toast.error(error.message || 'Failed to create account. Please try again.');
         }
-      } else {
-        console.log('Registration successful');
-        // Success message is handled in the signUp function
       }
     } catch (error) {
-      console.error('Registration catch error:', error);
       toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);

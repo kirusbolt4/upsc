@@ -1,27 +1,54 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Fallback to demo values if environment variables are not set
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key';
+// Get environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Only throw error in development
-if ((!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'https://demo.supabase.co') && import.meta.env.DEV) {
-  console.warn('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+// Validate environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+  throw new Error('Supabase configuration is missing. Please check your environment variables.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
     flowType: 'pkce',
-    debug: import.meta.env.DEV,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    storageKey: 'upsc-tracker-auth'
+    debug: false,
+    storage: {
+      getItem: (key: string) => {
+        if (typeof window === 'undefined') return null;
+        try {
+          return window.localStorage.getItem(key);
+        } catch {
+          return null;
+        }
+      },
+      setItem: (key: string, value: string) => {
+        if (typeof window === 'undefined') return;
+        try {
+          window.localStorage.setItem(key, value);
+        } catch {
+          // Ignore storage errors
+        }
+      },
+      removeItem: (key: string) => {
+        if (typeof window === 'undefined') return;
+        try {
+          window.localStorage.removeItem(key);
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    },
+    storageKey: 'upsc-tracker-auth-token'
   },
   global: {
     headers: {
-      'X-Client-Info': 'upsc-tracker'
+      'X-Client-Info': 'upsc-tracker',
+      'apikey': supabaseAnonKey
     }
   },
   db: {

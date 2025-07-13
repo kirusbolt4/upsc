@@ -15,9 +15,10 @@ export function Login() {
   // Handle redirect after successful login
   useEffect(() => {
     if (user && !authLoading) {
-      console.log('User logged in, redirecting...', profile.role);
-      const redirectPath = profile?.role === 'admin' ? '/admin' : '/dashboard';
-      navigate(redirectPath, { replace: true });
+      if (profile) {
+        const redirectPath = profile.role === 'admin' ? '/admin' : '/dashboard';
+        navigate(redirectPath, { replace: true });
+      }
     }
   }, [user, profile, authLoading, navigate]);
 
@@ -44,12 +45,9 @@ export function Login() {
     setLoading(true);
     
     try {
-      console.log('Submitting login form...');
       const { error } = await signIn(email.trim(), password);
       
       if (error) {
-        console.error('Login error:', error);
-        
         // Handle specific error types
         if (error.message?.includes('Invalid login credentials')) {
           toast.error('Invalid email or password. Please check your credentials.');
@@ -61,12 +59,10 @@ export function Login() {
           toast.error(error.message || 'Failed to sign in. Please try again.');
         }
       } else {
-        console.log('Login successful, waiting for redirect...');
         toast.success('Logged in successfully!');
         // Navigation will be handled by useEffect
       }
     } catch (error) {
-      console.error('Login catch error:', error);
       toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
