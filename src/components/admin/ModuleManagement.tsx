@@ -251,7 +251,8 @@ export function ModuleManagement() {
             subject_id: subjectId,
             name: moduleFormData.name,
             description: moduleFormData.description || null,
-            order_index: maxOrder + 1
+            order_index: maxOrder + 1,
+            is_active: true
           });
 
         if (error) throw error;

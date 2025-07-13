@@ -76,7 +76,8 @@ export function SubjectManagement() {
             name: formData.name,
             description: formData.description || null,
             order_index: maxOrder + 1,
-            created_by: profile?.id
+            created_by: profile?.id,
+            is_active: true
           });
 
         if (error) throw error;

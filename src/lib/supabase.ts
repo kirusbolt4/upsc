@@ -8,12 +8,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce'
+    flowType: 'pkce',
+    debug: false
   },
   global: {
     headers: {
       'X-Client-Info': 'upsc-tracker'
     }
+  },
+  db: {
+    schema: 'public'
   }
 });
 

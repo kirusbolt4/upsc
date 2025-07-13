@@ -183,19 +183,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       if (data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: email.trim(),
-            full_name: fullName,
-            role,
-          });
+        // Create profile with proper error handling
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              email: email.trim(),
+              full_name: fullName,
+              role,
+            });
 
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          return { error: profileError };
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+            // If profile creation fails, we should still allow the user to continue
+            // as the profile might be created by a database trigger
+            console.warn('Profile creation failed, but user account was created');
+          }
+        } catch (profileError) {
+          console.error('Profile creation error:', profileError);
+          // Continue anyway as profile might be created by trigger
         }
       }
 

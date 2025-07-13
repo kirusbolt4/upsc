@@ -45,10 +45,14 @@ export function AdminDashboard() {
         .select('*', { count: 'exact', head: true });
 
       // Fetch students count
-      const { count: studentsCount } = await supabase
+      const { count: studentsCount, error: studentsError } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'student');
+
+      if (studentsError) {
+        console.error('Error fetching students count:', studentsError);
+      }
 
       setStats({
         totalSubjects: subjectsCount || 0,
@@ -58,6 +62,7 @@ export function AdminDashboard() {
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
+      toast.error('Failed to load dashboard statistics');
     } finally {
       setLoading(false);
     }

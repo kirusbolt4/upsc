@@ -25,6 +25,11 @@ export function StudentDashboard() {
 
   const fetchProgress = async () => {
     try {
+      if (!profile?.id) {
+        console.log('No profile ID available');
+        return;
+      }
+
       // Fetch subjects with progress
       const { data: subjects, error: subjectsError } = await supabase
         .from('subjects')
@@ -71,6 +76,7 @@ export function StudentDashboard() {
       generateMotivationalMessage(progressData);
     } catch (error) {
       console.error('Error fetching progress:', error);
+      toast.error('Failed to load progress data');
     } finally {
       setLoading(false);
     }
